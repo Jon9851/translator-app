@@ -1,19 +1,28 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// 1. Initialize the AI with the key from your .env.local
+// 1. Setup the connection to Google Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export async function POST(req) {
   try {
+    // 2. Get the image data sent from your phone
     const { image } = await req.json();
 
-    // 2. Use the "Flash" model (it's the fastest and cheapest)
+    // 3. Choose the model (Flash is fastest)
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // 3. The Instruction
-    const prompt = "Analyze this image. Find any text. Translate it to English. Return ONLY a JSON array: [{'translation': 'text'}]";
+    // 4. THE PROMPT: This tells the AI exactly how to behave.
+    // We are asking for JSON so our code can read the X and Y coordinates.
+    const prompt = `
+      Identify all text in this image. 
+      Translate each piece of text into English.
+      Return the result ONLY as a JSON array of objects.
+      Each object must look like this:
+      {"translation": "Hello", "x": 50, "y": 20}
+      Note: x and y should be the percentage (0-100) of where the text is located.
+    `;
 
-    // 4. Send the image to Google
+    // 5. Send the image and prompt to the AI
     const result = await model.generateContent([
       prompt,
       {
@@ -24,16 +33,17 @@ export async function POST(req) {
       },
     ]);
 
+    // 6. Get the text response and clean it
     const responseText = result.response.text();
+    const cleanedJson = responseText.replace(/```json|```/g, "").trim();
     
-    // 5. Clean the response (sometimes AI adds ```json blocks)
-    const cleanedJson = responseText.replace(/```json|```/g, "");
-    
+    // 7. Send the coordinates and translations back to your page.js
     return new Response(cleanedJson, {
       headers: { "Content-Type": "application/json" },
     });
+
   } catch (error) {
-    console.error("API Error:", error);
-    return new Response(JSON.stringify({ error: "Failed to translate" }), { status: 500 });
+    console.error("AI Error:", error);
+    return new Response(JSON.stringify({ error: "AI failed to respond" }), { status: 500 });
   }
 }
